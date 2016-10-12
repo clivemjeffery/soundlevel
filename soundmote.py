@@ -15,14 +15,29 @@ AUDIO_SEGMENT_LENGTH = 0.5
 _soundmeter = None
 mote = Mote()
 mote.configure_channel(1, 16, False)
+mote.configure_channel(2, 16, False)
 mote.clear()
 
-def moteshow(n):
+def clamp16(n):
+    return max(min(16, n), 0)
+
+def moteset(n, r, g, b):
+	for pixel in range(clamp16(n)):
+		mote.set_pixel(1, pixel, r, g, b)
+	for pixel in range(15, clamp16(32-n)-1, -1):
+		mote.set_pixel(2, pixel, r, g, b)
+
+def motemeter(n):
 	# show n lights on the strip
 	mote.clear()
-	if (n > -1) and (n < 17):
-		for pixel in range(n):
-			mote.set_pixel(1, pixel, 255, 0, 0)
+	if n > 96:
+		n = 96
+	# show green - always up to 16 on each strip
+	moteset(n, 0, 255, 0)
+	if n > 32: # show yellow
+		moteset(n-32, 255, 255, 0)
+	if n > 64: # show red
+		moteset(n-64, 255, 0, 0)
 	mote.show()
 
 class Meter(object):
@@ -88,10 +103,10 @@ class Meter(object):
 	def meter(self, rms, dbfs):
 		if not self._graceful:
 			m100 = "-" * (100 + int(round(dbfs)))
-			m16 = int(round(16 * (1 + dbfs/70))) # how many lights to light?
-			sys.stdout.write("\r{0} - {1}".format(m16, dbfs))
+			mm = int(round(96 + dbfs)) # motemeter value
+			sys.stdout.write("\r{0}\t{1}\t{2}".format(dbfs, mm, m100))
 			sys.stdout.flush()
-			moteshow(m16)
+			motemeter(mm)
 			
 	def graceful(self):
 		"""Graceful stop so that the while loop in start() will stop after the
@@ -105,6 +120,7 @@ class Meter(object):
 		self.stream.stop_stream()
 		self.audio.terminate()
 		mote.clear()
+		mote.show()
 
 def main():
 	m = Meter()
