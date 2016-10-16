@@ -16,28 +16,52 @@ _soundmeter = None
 mote = Mote()
 mote.configure_channel(1, 16, False)
 mote.configure_channel(2, 16, False)
+mote.configure_channel(3, 16, False)
+mote.configure_channel(4, 16, False)
 mote.clear()
 
+#
 def clamp16(n):
     return max(min(16, n), 0)
 
 def moteset(n, r, g, b):
-	for pixel in range(clamp16(n)):
+	# strip 1 (increasing pixels)
+	r1 = clamp16(n) # values between 1 and 16
+	for pixel in range(r1):
 		mote.set_pixel(1, pixel, r, g, b)
-	for pixel in range(15, clamp16(32-n)-1, -1):
+	# strip 2 (inc.)
+	r2 = clamp16(n-16) # values between 17 and 32
+	for pixel in range(r2):
 		mote.set_pixel(2, pixel, r, g, b)
+	# strip 3 (decreasing pixels)
+	r3 = clamp16(n-32) # values between 33 and 48
+	for pixel in range(15, 15-r3, -1):
+		mote.set_pixel(3, pixel, r, g, b)
+	# strip 4 (dec.)
+	r4 = clamp16(n-48) # values betwene 47 and 64
+	for pixel in range(15, 15-r4, -1):
+		mote.set_pixel(4, pixel, r, g, b)
+	#print("moteplot({0},{1},{2},{3})\t:\tr1={4}\tr2={5}\tr3={6}\tr4={7}".format(n, r, g, b, r1, r2, r3, r4))
+		
 
-def motemeter(n):
-	# show n lights on the strip
+def moteplotgreen():
+	for strip in range(1,5):
+		for pixel in range(16):
+			mote.set_pixel(strip, pixel, 0, 255, 0)
+
+def moteplot(x, xmin, xmax, r, g, b):
+	p = int(round((x - xmin) * (64 / (xmax-xmin))))
+	moteset(p, r, g, b)
+
+def motemeter(value):
+	bright = 127
+	#print("motemeter({0})".format(value))
 	mote.clear()
-	if n > 96:
-		n = 96
-	# show green - always up to 16 on each strip
-	moteset(n, 0, 255, 0)
-	if n > 32: # show yellow
-		moteset(n-32, 255, 255, 0)
-	if n > 64: # show red
-		moteset(n-64, 255, 0, 0)
+	if value > 128:
+		value = 128
+	moteplot(value, 0, 64, 0, bright, 0)
+	moteplot(value, 65, 96, bright, bright, 0)
+	moteplot(value, 97, 128, bright, 0, 0)
 	mote.show()
 
 class Meter(object):
@@ -102,9 +126,9 @@ class Meter(object):
 
 	def meter(self, rms, dbfs):
 		if not self._graceful:
-			m100 = "-" * (100 + int(round(dbfs)))
-			mm = int(round(96 + dbfs)) # motemeter value
-			sys.stdout.write("\r{0}\t{1}\t{2}".format(dbfs, mm, m100))
+			# m100 = "-" * (100 + int(round(dbfs)))
+			mm = 128 + dbfs # motemeter value
+			sys.stdout.write("r\{0}\t{1}\n".format(dbfs,mm))
 			sys.stdout.flush()
 			motemeter(mm)
 			
