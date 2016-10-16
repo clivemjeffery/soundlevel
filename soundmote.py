@@ -5,12 +5,14 @@ import signal
 import sys
 from io import BytesIO
 from mote import Mote
+from accumulator import Accumulator
 
 FRAMES_PER_BUFFER = 2048
 FORMAT = pyaudio.paInt16
 CHANNELS = 2
 RATE = 44100
-AUDIO_SEGMENT_LENGTH = 0.5
+AUDIO_SEGMENT_LENGTH = 0.5 # seconds
+ACCUMULATE = 240 # segments (i.e. twice the seconds for desired mins)
 
 _soundmeter = None
 mote = Mote()
@@ -20,7 +22,6 @@ mote.configure_channel(3, 16, False)
 mote.configure_channel(4, 16, False)
 mote.clear()
 
-#
 def clamp16(n):
     return max(min(16, n), 0)
 
@@ -44,10 +45,12 @@ def moteset(n, r, g, b):
 	#print("moteplot({0},{1},{2},{3})\t:\tr1={4}\tr2={5}\tr3={6}\tr4={7}".format(n, r, g, b, r1, r2, r3, r4))
 		
 
-def moteplotgreen():
+def moteflash():
+	mote.clear()
 	for strip in range(1,5):
 		for pixel in range(16):
-			mote.set_pixel(strip, pixel, 0, 255, 0)
+			mote.set_pixel(strip, pixel, 0, 0, 255)
+	mote.show()
 
 def moteplot(x, xmin, xmax, r, g, b):
 	p = int(round((x - xmin) * (64 / (xmax-xmin))))
@@ -83,6 +86,8 @@ class Meter(object):
 		self.is_running = False
 		self._graceful = False  # Graceful stop switch
 		self._data = {}
+		self.acc = Accumulator(-100,0)
+		self.points = 0
 
 	def record(self):
 		"""
@@ -126,9 +131,16 @@ class Meter(object):
 
 	def meter(self, rms, dbfs):
 		if not self._graceful:
-			# m100 = "-" * (100 + int(round(dbfs)))
+			if self.acc.n < ACCUMULATE:
+				self.acc.addValue(dbfs)
+			else:
+				if self.acc.mean() < -40:
+					self.points = self.points + 1
+					moteflash()
+				sys.stdout.write("\nAccumulation: min{:+8.3f}\tmax{:+8.3f}\tmean{:+8.3f}\tpoints{:4d}\n".format(self.acc.min_value, self.acc.max_value, self.acc.mean(), self.points))
+				self.acc = Accumulator(-100,0) # reset accumulator
 			mm = 128 + dbfs # motemeter value
-			sys.stdout.write("r\{0}\t{1}\n".format(dbfs,mm))
+			sys.stdout.write("\r{:+08.3f}\t{:+08.3f}".format(dbfs,mm))
 			sys.stdout.flush()
 			motemeter(mm)
 			
@@ -143,6 +155,7 @@ class Meter(object):
 			self._graceful = True
 		self.stream.stop_stream()
 		self.audio.terminate()
+		sys.stdout.write("\nPoints={0}\n".format(self.points))
 		mote.clear()
 		mote.show()
 
